@@ -1,0 +1,103 @@
+---
+sidebar_position: 3
+title: Patterns and triggers
+description: How an @EventPattern becomes the event names an Inngest function is triggered by.
+---
+
+# Patterns and triggers
+
+A broker matches an incoming routing key against your patterns when a message **arrives**. An
+Inngest function does the opposite: it **declares**, when it is created, the exact event names that
+trigger it — Inngest has no wildcards. So every pattern is turned into a list of event names at boot,
+by a **trigger resolver**.
+
+## The default: literal names
+
+`InngestTriggers.literal` needs nothing but the pattern:
+
+| `@EventPattern(...)` | triggered by |
+|---|---|
+| `'orders.placed'` | `orders.placed` |
+| `'app/user.created'` | `app/user.created` |
+| `'orders.placed.*'` | `orders.placed` — a trailing `.*` is dropped |
+| `'orders.#'`, `'orders.*.eu'`, `'*'` | **nothing** — a warning is logged and no function is created |
+
+The trailing `.*` is accepted so that patterns written for a routing-key broker (AMQP topic
+exchanges, SNS filter policies on `orders.placed.<entity id>`) keep working unchanged when a service
+moves to Inngest.
+
+## Wildcards: your own resolver
+
+A pattern like `orders.#` stands for a list only your application knows. Give the strategy a
+resolver that spells it out:
+
+```ts
+import { InngestTriggers, type InngestTriggerResolver } from 'nestjs-inngest-transport';
+
+const catalog: Record<string, string[]> = {
+  'orders.#': ['orders.placed', 'orders.paid', 'orders.shipped'],
+};
+
+const triggers: InngestTriggerResolver = (pattern) =>
+  catalog[pattern] ?? InngestTriggers.literal(pattern);
+
+new InngestStrategy({ inngest, httpAdapter, triggers });
+```
+
+The catalog can be anything known at boot — a registry of event classes, a schema file, Inngest's
+own `eventType()` definitions.
+
+## One event, one run
+
+On a broker, a queue receives one copy of a message however many of its bindings match. On Inngest,
+**every function** whose triggers include an event name gets a run of its own. A service bound to
+both `orders.#` and `orders.placed` would therefore handle every `orders.placed` twice.
+
+So each event name is **claimed** by exactly one pattern — the most specific one that asked for it:
+
+1. a literal pattern (no `*` or `#`) first;
+2. then the pattern that stands for fewer names;
+3. then registration order.
+
+```ts
+@InngestEventPattern('orders.#')      // gets orders.paid, orders.shipped
+handleTheRest() {}
+
+@InngestEventPattern('orders.placed') // gets orders.placed — and only this handler runs for it
+handlePlaced() {}
+```
+
+A pattern left with no name of its own creates no function, with a warning that nothing will ever
+trigger that handler.
+
+## Limits
+
+- **Ten triggers per function.** Inngest takes at most ten event names on one function; a pattern
+  that stands for more fails the start with a message listing them. Bind the events the service
+  actually reacts to, one pattern each.
+- **Function ids are derived from the pattern** — `orders.placed.*` becomes `orders-placed`. Two
+  patterns that derive the same id (or a pattern whose configured `id` collides) fail the start;
+  give one of them an id of its own with `@InngestEventPattern(pattern, { id: '…' })`.
+
+:::caution Renaming a function id
+
+Inngest identifies a function by its id. Changing a pattern changes the derived id, which Inngest
+sees as one function removed and another created — runs in flight on the old one are not moved.
+Pin an `id` when a pattern might change.
+
+:::
+
+## Seeing the result
+
+`strategy.unwrap()` answers what was created:
+
+```ts
+const { triggers, functions, platform } = strategy.unwrap();
+triggers.get('orders.#'); // ['orders.paid', 'orders.shipped']
+```
+
+and the strategy logs one line when it starts:
+
+```text
+[InngestStrategy] 2 function(s) served at /api/inngest on express (orders.# → 2, orders.placed → 1)
+```

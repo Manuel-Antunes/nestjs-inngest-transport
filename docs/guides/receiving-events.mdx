@@ -1,0 +1,124 @@
+---
+sidebar_position: 1
+title: Receiving events
+description: The strategy, what a handler receives, and the Nest pipeline around it.
+---
+
+# Receiving events
+
+`InngestStrategy` is the server half. Every `@EventPattern` the application declares becomes one
+Inngest function; when Inngest invokes the function, the handler runs.
+
+```ts
+app.connectMicroservice({
+  strategy: new InngestStrategy({
+    inngest,
+    httpAdapter: app.getHttpAdapter(),
+  }),
+});
+await app.startAllMicroservices();
+await app.listen(3000);
+```
+
+## Options
+
+| option | default | what it does |
+|---|---|---|
+| `inngest` | — (required) | the Inngest client the functions are created on |
+| `httpAdapter` | — | the host's adapter; also settable with `strategy.setHttpAdapter(adapter)` before starting |
+| `servePath` | `'/api/inngest'` | where the functions are served |
+| `serveOrigin` | the request's origin | the origin Inngest should call back — see [Deployment](./deployment.mdx) |
+| `triggers` | `InngestTriggers.literal` | how a pattern becomes event names — see [Patterns and triggers](./patterns-and-triggers.mdx) |
+| `retries` | Inngest's (4) | every function's `retries` |
+| `functionConfig` | — | every function's configuration, or a function of the pattern — see [Function configuration](./function-configuration.mdx) |
+| `deserializer` | Nest's `IncomingRequestDeserializer` | how an Inngest event becomes the handler's payload |
+| `serializer` | Nest's `IdentitySerializer` | how the handler's answer becomes the run's output |
+
+## Declaring a handler
+
+```ts
+@InngestEventPattern('orders.placed')
+handle(@Payload() order: Order, @Ctx() context: InngestContext) {}
+```
+
+`@InngestEventPattern(pattern, config?)` is Nest's `@EventPattern` for this transport. Nest's own
+decorator works as well — `@EventPattern('orders.placed')` — and the difference is in three details:
+
+| | `@InngestEventPattern(p, config)` | `@EventPattern(p, { inngest: config })` |
+|---|---|---|
+| function configuration | type-checked against Inngest's types | `satisfies InngestPatternExtras` to check it |
+| in a hybrid app with other transports | bound to Inngest alone | given to every transport |
+| a typed `@Ctx()` on NestJS 12 | fine | needs `@EventPattern<string>(…)`, see below |
+
+:::note NestJS 12 and a typed `@Ctx()`
+
+NestJS 12 types `@EventPattern` so that the handler's extra parameters are `unknown`; under
+`strictFunctionTypes`, a handler declaring `@Ctx() context: InngestContext` then fails with
+*Unable to resolve signature of method decorator*. `@InngestEventPattern` is not affected. With Nest's
+decorator, pass the type argument: `@EventPattern<string>('orders.placed')`.
+
+:::
+
+## What a handler gets
+
+- **`@Payload()`** is the event's `data`.
+- **`@Ctx()`** is an `InngestContext`:
+
+| method | answers |
+|---|---|
+| `getEvent()` | the event as Inngest delivered it — `name`, `data`, `id`, `ts`, `user`, `meta` |
+| `getEventName()` | the event's name, which is one of the names the pattern stands for |
+| `getPattern()` | the pattern the function was bound for, as the controller declared it |
+| `getStep()` | Inngest's step tools — see [Steps](./steps.mdx) |
+| `getRunId()` | the run's id, the one the dashboard shows |
+| `getAttempt()` | `0` on the first attempt, `1` on the first retry, … |
+| `getEventId()` | the event's id, when it has one |
+| `getEvents()` | every event of the run — one, unless the function sets `batchEvents` |
+
+## What a handler answers
+
+What the handler returns is the **run's output**, recorded by Inngest and shown in its dashboard. An
+`Observable` is waited for, and its last value is the output. A handler that throws — or whose
+observable errors — fails the attempt, and Inngest retries it. See
+[Errors and retries](./errors-and-retries.mdx).
+
+## The Nest pipeline applies
+
+Guards, interceptors, pipes and exception filters run around the handler exactly as on any other
+transport, with `context.getType() === 'rpc'`:
+
+```ts
+@Injectable()
+class TenantGuard implements CanActivate {
+  canActivate(context: ExecutionContext) {
+    const event = context.switchToRpc().getContext<InngestContext>().getEvent();
+    return event.user?.tenant !== undefined;
+  }
+}
+```
+
+:::caution Pipes and `@Ctx()`
+
+`@UsePipes()` on a method applies to **every** parameter, the context included — a pipe that
+spreads its value turns the `InngestContext` into a plain object. Bind a pipe to the payload alone:
+`@Payload(MyPipe)`.
+
+:::
+
+A guard that refuses fails the attempt (with Nest's `Forbidden resource`), and Inngest retries it
+like any failure; throw a `NonRetriableError` from the guard when a refusal is final.
+
+## Events nobody handles
+
+An invocation for a pattern with no handler — say, after a deploy removed one while Inngest still
+had the function — is acknowledged and dropped, with a warning in the log.
+
+## Hybrid and standalone applications
+
+The strategy needs an HTTP server to mount on, so the application is a
+[hybrid](https://docs.nestjs.com/faq/hybrid-application): `NestFactory.create` and
+`connectMicroservice`. A service that only receives events still needs that port — it is the one
+thing Inngest costs that a broker does not.
+
+With `connectMicroservice(options, { inheritAppConfig: true })`, the global pipes, interceptors,
+guards and filters of the HTTP application apply to the Inngest handlers too.

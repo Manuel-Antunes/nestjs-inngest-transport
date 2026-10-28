@@ -1,0 +1,89 @@
+---
+sidebar_position: 8
+title: Deployment
+description: Keys, the serve origin, syncing the app, and running behind proxies and in containers.
+---
+
+# Deployment
+
+## The keys
+
+In production the Inngest client needs two keys from the [Inngest dashboard](https://app.inngest.com),
+which it reads from the environment by itself:
+
+| variable | used by | for |
+|---|---|---|
+| `INNGEST_EVENT_KEY` | `InngestClientProxy` | sending events |
+| `INNGEST_SIGNING_KEY` | `InngestStrategy` | verifying that each call to `/api/inngest` comes from Inngest |
+
+Leave `isDev` unset (or `false`) in production: in dev mode the client sends to a local dev server
+and accepts unsigned calls.
+
+## Syncing the app
+
+Inngest has to be told where your functions are — *syncing* the app. After each deploy, either:
+
+- point the app at its URL once in the Inngest dashboard and enable automatic syncing for your
+  platform, or
+- `curl -X PUT https://orders.example.com/api/inngest` from your deploy pipeline — the application
+  then registers its functions with Inngest itself.
+
+## `serveOrigin`: the address Inngest calls back
+
+When the application registers, it tells Inngest the URL to call. By default it derives that URL
+from the **request that triggered the registration** — its `Host` header and protocol. That is right
+when Inngest reaches the application at the same address as whoever triggered the sync, and wrong
+when it does not:
+
+- the sync is triggered from inside a cluster (`http://orders:3000`), but Inngest is outside it;
+- the application is behind a proxy that rewrites `Host` or terminates TLS;
+- locally, the dev server runs in Docker and the application on the host (or the reverse).
+
+The symptom is quiet: every run sits in **Running** forever, with nothing in any log, because Inngest
+is calling an address that answers but is not your service. Set the origin explicitly:
+
+```ts
+new InngestStrategy({
+  inngest,
+  httpAdapter: app.getHttpAdapter(),
+  serveOrigin: 'https://orders.example.com',
+});
+```
+
+`serveOrigin` is the origin alone; the path is `servePath`.
+
+## Docker Compose, locally
+
+```yaml title="docker-compose.yml"
+services:
+  inngest:
+    image: inngest/inngest
+    command: inngest dev --no-discovery -u http://orders:3000/api/inngest
+    ports: ['8288:8288']
+  orders:
+    build: .
+    environment:
+      INNGEST_DEV: '1'
+      INNGEST_BASE_URL: http://inngest:8288
+      INNGEST_SERVE_ORIGIN: http://orders:3000
+```
+
+and in the application:
+
+```ts
+const inngest = new Inngest({ id: 'orders' }); // reads INNGEST_DEV and INNGEST_BASE_URL
+new InngestStrategy({ inngest, httpAdapter, serveOrigin: process.env.INNGEST_SERVE_ORIGIN });
+```
+
+## Serverless
+
+A function invocation is an ordinary HTTP request, so the application can run wherever a Nest HTTP
+application runs — containers, VMs, or a serverless platform with an HTTP adapter. Long-running work
+belongs in steps: each step is its own request, so no single request has to outlive a platform's
+timeout.
+
+## Several services, one Inngest app?
+
+Give each service an Inngest client of its own (`id: 'orders'`, `id: 'billing'`): each is an *app*
+in Inngest, synced from its own URL. Two services can bind the same event name — each gets its own
+run, as two queues bound to one topic each get a copy.

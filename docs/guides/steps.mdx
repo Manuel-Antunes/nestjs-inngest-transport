@@ -1,0 +1,62 @@
+---
+sidebar_position: 5
+title: Steps
+description: Durable execution from a Nest handler — step.run, step.sleep, step.waitForEvent.
+---
+
+# Steps
+
+A handler can use every one of Inngest's [step tools](https://www.inngest.com/docs/features/inngest-functions/steps-workflows)
+through `context.getStep()`:
+
+```ts
+@InngestEventPattern('orders.placed')
+async placed(@Payload() order: Order, @Ctx() context: InngestContext) {
+  const step = context.getStep();
+
+  const reservation = await step.run('reserve-stock', () => this.stock.reserve(order));
+
+  const payment = await step.waitForEvent('wait-for-payment', {
+    event: 'orders.paid',
+    timeout: '1d',
+    if: `async.data.orderId == '${order.id}'`,
+  });
+  if (!payment) {
+    await step.run('release-stock', () => this.stock.release(reservation));
+    return { cancelled: true };
+  }
+
+  await step.sleep('cool-off', '1h');
+  await step.run('ship', () => this.shipping.ship(order));
+  return { shipped: true };
+}
+```
+
+## How it runs
+
+A function with steps is invoked **many times** — once per step, roughly. Each time, the steps that
+already ran are not run again: their results are replayed from what Inngest stored. So:
+
+- **Each step runs once**, even if a later step fails and the function is retried.
+- **Everything outside a step runs on every invocation.** Keep side effects inside `step.run`.
+- **Each invocation goes through the Nest pipeline** — guards, interceptors and pipes run every time,
+  so keep them free of side effects too, and cheap.
+- **A step's id is its identity.** Two steps with the same id in one run are one step; renaming a
+  step in code that is running in production restarts it.
+
+## What step results are
+
+A step's return value is serialized to JSON and back. A `Date` comes back as a string, a class
+instance as a plain object. Return plain data from a step.
+
+## Sending events from a step
+
+`step.sendEvent` sends from inside a function and records the send as a step, so a retry does not
+send it twice:
+
+```ts
+await step.sendEvent('notify', { name: 'orders.confirmed', data: { id: order.id } });
+```
+
+Prefer it to the `InngestClientProxy` inside a handler: an `emit()` outside a step would be sent
+again on every invocation.

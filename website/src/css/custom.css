@@ -1,0 +1,148 @@
+/**
+ * Infima drives the theme through CSS variables; everything below is either an
+ * override of one of those, or a small amount of site-specific chrome.
+ */
+
+:root {
+  --ifm-color-primary: #c8234e;
+  --ifm-color-primary-dark: #b41f46;
+  --ifm-color-primary-darker: #aa1e42;
+  --ifm-color-primary-darkest: #8c1937;
+  --ifm-color-primary-light: #db2d5a;
+  --ifm-color-primary-lighter: #de3962;
+  --ifm-color-primary-lightest: #e45d7f;
+
+  --ifm-code-font-size: 92%;
+  --ifm-font-family-monospace:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --ifm-heading-font-weight: 650;
+  --ifm-navbar-shadow: 0 1px 0 var(--ifm-toc-border-color);
+
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.08);
+  --hero-gradient: linear-gradient(135deg, #14081f 0%, #3b0f3a 50%, #b8204a 100%);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #ff6b8e;
+  --ifm-color-primary-dark: #ff4c77;
+  --ifm-color-primary-darker: #ff3c6b;
+  --ifm-color-primary-darkest: #ff0f48;
+  --ifm-color-primary-light: #ff8aa5;
+  --ifm-color-primary-lighter: #ff9ab1;
+  --ifm-color-primary-lightest: #ffc9d6;
+
+  --ifm-background-color: #0d1117;
+  --ifm-background-surface-color: #131a23;
+
+  --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.1);
+}
+
+.theme-code-block {
+  font-variant-ligatures: none;
+}
+
+/* `error-next-line` magic comment — for the errors the transport raises on
+   purpose, so a refusal reads as a refusal rather than as sample output. */
+.code-block-error-line {
+  background-color: rgba(220, 38, 38, 0.12);
+  display: block;
+  margin: 0 calc(-1 * var(--ifm-pre-padding));
+  padding: 0 var(--ifm-pre-padding);
+  border-left: 3px solid #dc2626;
+}
+
+/* Tables in these docs are dense reference material, not decoration. */
+.markdown table {
+  display: table;
+  width: 100%;
+  font-size: 0.92rem;
+}
+
+.markdown table th {
+  white-space: nowrap;
+}
+
+.markdown h2 {
+  margin-top: 2.5rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--ifm-toc-border-color);
+}
+
+.markdown h2:first-of-type {
+  border-top: none;
+}
+
+/* Homepage ------------------------------------------------------------- */
+
+.heroBanner {
+  background: var(--hero-gradient);
+  color: #fff;
+  padding: 5rem 0 4rem;
+  text-align: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.heroTitle {
+  font-size: clamp(2.2rem, 6vw, 3.4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.75rem;
+}
+
+.heroTagline {
+  font-size: clamp(1rem, 2.4vw, 1.3rem);
+  max-width: 46rem;
+  margin: 0 auto 2rem;
+  opacity: 0.92;
+}
+
+.heroButtons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.heroInstall {
+  margin-top: 2rem;
+  display: inline-block;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.95rem;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  color: #ffe6ee;
+}
+
+.featureCard {
+  height: 100%;
+  padding: 1.25rem 1.4rem;
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 10px;
+  background: var(--ifm-background-surface-color);
+  transition:
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.featureCard:hover {
+  border-color: var(--ifm-color-primary);
+  transform: translateY(-2px);
+}
+
+.featureCard h3 {
+  font-size: 1.05rem;
+  margin-bottom: 0.4rem;
+}
+
+.featureCard p {
+  margin-bottom: 0;
+  font-size: 0.95rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.featureGrid {
+  padding: 3rem 0;
+}

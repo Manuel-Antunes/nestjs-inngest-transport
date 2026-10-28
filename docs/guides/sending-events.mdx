@@ -1,0 +1,129 @@
+---
+sidebar_position: 2
+title: Sending events
+description: InngestClientProxy, ClientsModule, and per-send options with InngestRecordBuilder.
+---
+
+# Sending events
+
+`InngestClientProxy` is the client half: a Nest `ClientProxy` whose `emit()` sends an Inngest event.
+
+## Registering it
+
+With `ClientsModule`, through `customClass`:
+
+```ts
+@Module({
+  imports: [
+    ClientsModule.register([
+      { name: 'ORDERS_EVENTS', customClass: InngestClientProxy, options: { inngest } },
+    ]),
+  ],
+})
+export class CheckoutModule {}
+```
+
+or asynchronously, when the client comes from configuration:
+
+```ts
+ClientsModule.registerAsync([
+  {
+    name: 'ORDERS_EVENTS',
+    inject: [InngestConfig],
+    useFactory: (config: InngestConfig) => ({
+      customClass: InngestClientProxy,
+      options: { inngest: config.client() },
+    }),
+  },
+]);
+```
+
+or as a plain provider:
+
+```ts
+{ provide: 'ORDERS_EVENTS', useFactory: () => new InngestClientProxy({ inngest }) }
+```
+
+## Sending
+
+```ts
+constructor(@Inject('ORDERS_EVENTS') private readonly events: ClientProxy) {}
+
+async place(order: Order) {
+  await lastValueFrom(this.events.emit('orders.placed', order));
+}
+```
+
+The pattern is the event's **name** and the data is its **`data`**. Inngest only takes an object as
+`data`; anything else (a string, a number, an array) is sent as `{ value }`.
+
+`emit()` returns a **cold** observable, as on every Nest transport: nothing is sent until something
+subscribes. `lastValueFrom` subscribes and waits for Inngest to accept the event, so an error — a
+wrong event key, an unreachable Inngest — surfaces where you sent from.
+
+:::note `send()` is refused
+
+Nest's `send()` is request/response. An Inngest event triggers functions and gets no reply, so
+`send()` fails at once with an error saying to use `emit()`. To wait for a function's result from
+inside another function, use `step.invoke` in a [step](./steps.mdx).
+
+:::
+
+## Per-send options
+
+`InngestRecordBuilder` attaches Inngest's own options to one send, the way Nest's
+`RmqRecordBuilder` or `NatsRecordBuilder` do for theirs:
+
+```ts
+import { InngestRecordBuilder } from 'nestjs-inngest-transport';
+
+await lastValueFrom(
+  this.events.emit(
+    'orders.placed',
+    new InngestRecordBuilder(order)
+      .setIdempotencyKey(order.id)
+      .setSession('customer_id', order.customerId)
+      .setTimestamp(Date.now() + 60_000)
+      .setUser({ tenant: order.tenant })
+      .build(),
+  ),
+);
+```
+
+| method | Inngest field | what it does |
+|---|---|---|
+| `setIdempotencyKey(key)` | `id` = `<name>:<key>` | two sends with the same key run once, within Inngest's deduplication window |
+| `setTimestamp(ts)` | `ts` | when the event happened; a time in the future delays the runs |
+| `setSession(key, id)` / `setSessions({...})` | `meta.sessions` | groups runs in the dashboard; at most 5 per event, refused at once beyond that |
+| `setUser({...})` | `user` | entries beside the data, readable as `context.getEvent().user` |
+| `setMetadata({...})` | `user` | the same slot, merged before `setUser` so `user` wins a shared key |
+| `setOptions({...})` | — | all of the above at once |
+
+The record is recognized by a marker symbol, not by its shape, so a domain object that happens to
+have a `data` and an `options` property is still sent as data.
+
+## A custom serializer
+
+A `serializer` turns the packet into the event. Answering an object with a `name` and a `data`
+chooses the event entirely:
+
+```ts
+new InngestClientProxy({
+  inngest,
+  serializer: {
+    serialize: ({ pattern, data }) => ({
+      name: `shop/${pattern}`,
+      data,
+      user: { source: 'checkout' },
+    }),
+  },
+});
+```
+
+Answering anything else falls back to the packet: the pattern is the name, the data is the data.
+
+## The client underneath
+
+`proxy.unwrap()` answers the `Inngest` client, for anything the proxy does not offer —
+`inngest.send([...])` of a batch, for instance. `connect()` and `close()` do nothing: each send is
+one HTTP request, and there is no connection to hold.

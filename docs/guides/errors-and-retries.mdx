@@ -1,0 +1,108 @@
+---
+sidebar_position: 6
+title: Errors and retries
+description: Why InngestExceptionFilter exists, and how NonRetriableError and RetryAfterError behave.
+---
+
+# Errors and retries
+
+Inngest owns the retrying. An attempt that throws is retried — with backoff, up to the function's
+`retries` (4 by default) — and Inngest's own errors steer it:
+
+| thrown | Inngest does |
+|---|---|
+| any `Error` | retries, with exponential backoff |
+| `NonRetriableError` | fails the run now, no more attempts |
+| `RetryAfterError(message, delay)` | retries after `delay` (`'30s'`, a number of ms, or a `Date`) |
+| `StepError` (from a failed `step.run`) | the step failed after its own retries |
+
+## The catch: Nest's default exception filter
+
+Every Nest transport runs handler errors through the RPC exception filters, and the default one,
+`BaseRpcExceptionFilter`, turns anything that is not an `RpcException` into a plain object:
+
+```js
+{ status: 'error', message: 'Internal server error' }
+```
+
+The run still fails and is still retried — the strategy turns that object back into an `Error` — but
+**what was thrown is gone**:
+
+- a `NonRetriableError` is **retried** anyway, every attempt, to the end;
+- a `RetryAfterError` loses its delay;
+- the run's error in the Inngest dashboard says `Internal server error`, not what happened.
+
+## `InngestExceptionFilter`
+
+The filter rethrows whatever it catches, untouched, so Inngest sees the very error the handler threw.
+Apply it to every controller that handles Inngest events:
+
+```ts
+import { InngestExceptionFilter } from 'nestjs-inngest-transport';
+
+@Controller()
+@UseFilters(InngestExceptionFilter)
+export class OrdersHandler {
+  @InngestEventPattern('orders.refunded')
+  refund(@Payload() order: Order) {
+    if (order.total < 0) {
+      throw new NonRetriableError('a refund cannot be negative'); // not retried
+    }
+    if (!this.bank.isOpen()) {
+      throw new RetryAfterError('the bank is closed', '1h'); // retried in an hour
+    }
+  }
+}
+```
+
+### Globally
+
+`app.useGlobalFilters()` registers filters for HTTP **and** for microservices sharing the app's
+configuration — and this filter is an RPC filter, which has no business answering HTTP requests.
+Register it on the microservice alone, which keeps a configuration of its own unless
+`inheritAppConfig` is set:
+
+```ts
+const microservice = app.connectMicroservice({ strategy });
+microservice.useGlobalFilters(new InngestExceptionFilter());
+```
+
+With `connectMicroservice(options, { inheritAppConfig: true })` the two share one configuration;
+use `@UseFilters` on the controllers instead.
+
+### Your own filter
+
+A filter of your own that reports errors and rethrows works as well — what matters is that the
+original error is what it throws:
+
+```ts
+@Catch()
+export class ReportingFilter implements RpcExceptionFilter {
+  catch(exception: unknown) {
+    this.errors.report(exception);
+    return throwError(() => exception);
+  }
+}
+```
+
+## Retries and the Nest pipeline
+
+A guard that refuses, a pipe that fails validation and an interceptor that throws all fail the
+attempt, and Inngest retries them like any failure. When a refusal is final, make it a
+`NonRetriableError` — in the guard itself, or by mapping it in your filter.
+
+## Reading where you are
+
+`context.getAttempt()` is `0` on the first attempt and grows with each retry — useful to degrade
+gracefully on a last attempt, or to log. Inngest's own `maxAttempts` is on the function's
+configuration.
+
+## When every retry failed
+
+The run is marked **Failed** in Inngest, with the last error. To react to that in code, listen for
+Inngest's `inngest/function.failed` system event with a handler of its own:
+
+```ts
+@InngestEventPattern('inngest/function.failed')
+failed(@Payload() failure: { function_id: string; error: { message: string } }) {}
+```

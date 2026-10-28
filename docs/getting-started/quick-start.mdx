@@ -1,0 +1,138 @@
+---
+sidebar_position: 2
+title: Quick start
+description: One service that sends an event and handles it, end to end.
+---
+
+# Quick start
+
+One application that both sends `orders.placed` and handles it. In a real system the two halves
+usually live in different services; the wiring is the same.
+
+## 1. One Inngest client
+
+Create the client once and provide it, so the strategy and the client proxy share it — both then
+show up under one app in the Inngest dashboard.
+
+```ts title="src/inngest.ts"
+import { Inngest } from 'inngest';
+
+export const inngest = new Inngest({
+  id: 'orders', // the app id in the dashboard
+  isDev: process.env.NODE_ENV !== 'production',
+});
+```
+
+In production the client reads `INNGEST_EVENT_KEY` (to send) and `INNGEST_SIGNING_KEY` (to verify
+that a call really comes from Inngest) from the environment. See [Deployment](../guides/deployment.mdx).
+
+## 2. A handler
+
+```ts title="src/orders.handler.ts"
+import { Controller, UseFilters } from '@nestjs/common';
+import { Ctx, Payload } from '@nestjs/microservices';
+import {
+  InngestContext,
+  InngestEventPattern,
+  InngestExceptionFilter,
+} from 'nestjs-inngest-transport';
+
+@Controller()
+@UseFilters(InngestExceptionFilter)
+export class OrdersHandler {
+  @InngestEventPattern('orders.placed')
+  async placed(@Payload() order: { id: string }, @Ctx() context: InngestContext) {
+    const step = context.getStep();
+    const invoice = await step.run('create-invoice', () => ({ number: `INV-${order.id}` }));
+    await step.run('send-email', () => console.log(`invoice ${invoice.number} sent`));
+    return invoice;
+  }
+}
+```
+
+`InngestExceptionFilter` is not optional in practice — [here is why](../guides/errors-and-retries.mdx).
+
+## 3. A sender
+
+```ts title="src/checkout.service.ts"
+import { Inject, Injectable } from '@nestjs/common';
+import { ClientProxy } from '@nestjs/microservices';
+import { lastValueFrom } from 'rxjs';
+
+@Injectable()
+export class CheckoutService {
+  constructor(@Inject('ORDERS_EVENTS') private readonly events: ClientProxy) {}
+
+  async checkout(id: string) {
+    await lastValueFrom(this.events.emit('orders.placed', { id }));
+  }
+}
+```
+
+`emit()` returns a cold observable, as on every Nest transport: nothing is sent until it is
+subscribed to, which `lastValueFrom` does.
+
+## 4. The module
+
+```ts title="src/app.module.ts"
+import { Module } from '@nestjs/common';
+import { ClientsModule } from '@nestjs/microservices';
+import { InngestClientProxy } from 'nestjs-inngest-transport';
+
+import { CheckoutService } from './checkout.service';
+import { inngest } from './inngest';
+import { OrdersHandler } from './orders.handler';
+
+@Module({
+  imports: [
+    ClientsModule.register([
+      { name: 'ORDERS_EVENTS', customClass: InngestClientProxy, options: { inngest } },
+    ]),
+  ],
+  controllers: [OrdersHandler],
+  providers: [CheckoutService],
+})
+export class AppModule {}
+```
+
+## 5. The bootstrap
+
+```ts title="src/main.ts"
+import { NestFactory } from '@nestjs/core';
+import { InngestStrategy } from 'nestjs-inngest-transport';
+
+import { AppModule } from './app.module';
+import { inngest } from './inngest';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+
+  app.connectMicroservice({
+    strategy: new InngestStrategy({ inngest, httpAdapter: app.getHttpAdapter() }),
+  });
+
+  // highlight-next-line
+  await app.startAllMicroservices(); // must come before listen()
+  await app.listen(3000);
+}
+
+void bootstrap();
+```
+
+The order matters: the strategy mounts `/api/inngest` on the HTTP server, which has to happen before
+the server starts. The strategy refuses to start on a server that is already listening.
+
+## 6. Run it
+
+```bash
+npx inngest-cli@latest dev -u http://localhost:3000/api/inngest
+```
+
+Start the application, call `checkout('o-1')` from anywhere — a controller, a REPL — and open
+`http://localhost:8288`: the event, the run, and each step with its output are there.
+
+## Next
+
+- [Receiving events](../guides/receiving-events.mdx) — what a handler gets, and the Nest pipeline.
+- [Function configuration](../guides/function-configuration.mdx) — concurrency, throttling, timeouts.
+- [Steps](../guides/steps.mdx) — durable execution from a Nest handler.

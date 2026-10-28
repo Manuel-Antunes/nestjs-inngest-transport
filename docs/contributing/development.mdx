@@ -1,0 +1,50 @@
+---
+title: Development
+description: How the repository is laid out, how it is tested, and how the docs are built.
+---
+
+# Development
+
+```bash
+corepack enable
+pnpm install
+```
+
+## Layout
+
+| path | |
+|---|---|
+| `src/client` | `InngestClientProxy`, `InngestRecordBuilder` |
+| `src/server` | `InngestStrategy`, `InngestContext`, the functions, the serving, the exception filter |
+| `src/shared` | `InngestTriggers`, `InngestEvent` |
+| `src/testing` | `FakeInngest` — published as `nestjs-inngest-transport/testing` |
+| `test/integration` | a real Nest application on Express and Fastify |
+| `test/e2e` | the real Inngest dev server in Docker |
+| `test/package` | the packed tarball, loaded from CommonJS and ESM |
+| `docs` | this documentation, as MDX |
+| `website` | the Docusaurus site that builds it |
+
+## The test suites
+
+| command | suite | needs |
+|---|---|---|
+| `pnpm test` | unit, beside the code (`*.spec.ts`) | nothing |
+| `pnpm test:integration` | `test/integration` (`*.int-spec.ts`) | nothing |
+| `pnpm test:e2e` | `test/e2e` (`*.e2e-spec.ts`) | Docker |
+| `pnpm test:package` | `test/package` (`*.pkg-spec.ts`) | nothing — it builds first |
+| `pnpm test:coverage` | unit and integration, with coverage | nothing |
+
+The integration suite runs each function in process with `@inngest/test`, through the whole Nest
+pipeline. The end-to-end suite starts `inngest/inngest` with Testcontainers, has the application
+register with it, sends events through `InngestClientProxy` and reads the runs back from the dev
+server's API. Set `INNGEST_IMAGE` to pin another image.
+
+## The documentation site
+
+```bash
+pnpm docs:dev     # live, on http://localhost:3000/nestjs-inngest-transport/
+pnpm docs:build   # what CI builds; fails on a broken link or anchor
+```
+
+The site's dependencies are installed apart, in `website/`, so they never reach the package's
+lockfile.

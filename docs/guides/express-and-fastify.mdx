@@ -1,0 +1,60 @@
+---
+sidebar_position: 7
+title: Express and Fastify
+description: How the functions are mounted on each adapter, and why the boot order matters.
+---
+
+# Express and Fastify
+
+Inngest invokes a function by calling your application over HTTP, so the strategy does not open a
+port: it mounts Inngest's own serve handler on the application's HTTP server. Both of Nest's
+official adapters are supported, and which one is in use is read from the adapter.
+
+| adapter | mounted with | as |
+|---|---|---|
+| `ExpressAdapter` (Nest's default) | `inngest/express` | `app.use(servePath, handler)` |
+| `FastifyAdapter` | `inngest/fastify` | `fastify.register(plugin, { servePath })` |
+
+The serve path answers `GET` (introspection), `PUT` (registration) and `POST` (invocation).
+
+## Start the microservice before listening
+
+```ts
+const app = await NestFactory.create(AppModule);
+app.connectMicroservice({ strategy: new InngestStrategy({ inngest, httpAdapter: app.getHttpAdapter() }) });
+await app.startAllMicroservices(); // 1. mounts /api/inngest
+await app.listen(3000);            // 2. initializes and listens
+```
+
+The strategy mounts a route, and a route has to exist before the server starts answering:
+
+- on **Express**, a route added after `app.init()` lands behind Nest's not-found handler, and every
+  call to it answers `404`;
+- on **Fastify**, a plugin cannot be registered once the instance has booted, which Nest does in
+  `listen()`.
+
+Starting the microservices first is right on both. When the server is already listening, the
+strategy refuses to start, with a message saying what to do, instead of serving nothing.
+
+## Express and the request body
+
+Nest registers its JSON body parser when the application initializes — **after** the strategy has
+mounted. On Express, the strategy therefore reads the JSON body itself when nothing has read it yet,
+and leaves alone a body some parser already read. Nothing needs configuring, and it works with
+`bodyParser: false` too.
+
+## A global prefix
+
+`app.setGlobalPrefix('api')` applies to Nest's own routes, not to this one: the functions are served
+at `servePath` exactly. Set `servePath` to whatever URL Inngest should call.
+
+## Testing with Fastify
+
+When a test calls `app.init()` and drives the server with `supertest` instead of listening, Fastify
+has to be told it is ready, as for any Fastify route in Nest:
+
+```ts
+await app.startAllMicroservices();
+await app.init();
+await app.getHttpAdapter().getInstance().ready();
+```

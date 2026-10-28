@@ -1,0 +1,127 @@
+{
+  "name": "nestjs-inngest-transport",
+  "version": "0.1.0",
+  "description": "Inngest as a NestJS microservice transport: @EventPattern handlers become Inngest functions, and a ClientProxy sends events.",
+  "author": "Manuel Antunes",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./testing": {
+      "import": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
+      },
+      "require": {
+        "types": "./dist/testing.d.cts",
+        "default": "./dist/testing.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit -p tsconfig.lib.json && tsc --noEmit -p tsconfig.spec.json",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "vitest run --project e2e",
+    "test:package": "pnpm build && vitest run --project package",
+    "test:all": "vitest run",
+    "test:watch": "vitest --project unit",
+    "test:coverage": "vitest run --project unit --project integration --coverage",
+    "check:exports": "pnpm build && publint --strict && attw --pack . --profile node16",
+    "docs:install": "pnpm --dir website install",
+    "docs:dev": "pnpm run docs:install && pnpm --dir website run start",
+    "docs:build": "pnpm run docs:install && pnpm --dir website run build",
+    "docs:serve": "pnpm --dir website run serve",
+    "docs:typecheck": "pnpm --dir website run typecheck",
+    "prepare": "husky",
+    "prepublishOnly": "pnpm run build"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.1.0 || ^12.0.0",
+    "@nestjs/microservices": "^11.1.0 || ^12.0.0",
+    "inngest": "^4.0.0",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@biomejs/biome": "^2.6.3",
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
+    "@inngest/test": "^1.0.0",
+    "@nestjs/common": "^12.3.2",
+    "@nestjs/core": "^12.3.2",
+    "@nestjs/microservices": "^12.3.2",
+    "@nestjs/platform-express": "^12.3.2",
+    "@nestjs/platform-fastify": "^12.3.2",
+    "@nestjs/testing": "^12.3.2",
+    "@swc/core": "^1.16.20",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.2",
+    "@types/supertest": "^6.0.3",
+    "@vitest/coverage-v8": "^5.0.5",
+    "husky": "^9.1.7",
+    "inngest": "^4.26.1",
+    "lint-staged": "^16.4.0",
+    "publint": "^0.3.25",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "supertest": "^7.3.1",
+    "testcontainers": "^12.2.1",
+    "tsup": "^8.5.1",
+    "typescript": "~5.9.3",
+    "unplugin-swc": "^1.6.0",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.28.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Manuel-Antunes/nestjs-inngest-transport.git"
+  },
+  "homepage": "https://manuel-antunes.github.io/nestjs-inngest-transport/",
+  "bugs": {
+    "url": "https://github.com/Manuel-Antunes/nestjs-inngest-transport/issues"
+  },
+  "keywords": [
+    "nestjs",
+    "nest",
+    "inngest",
+    "microservices",
+    "transport",
+    "custom-transport",
+    "event-driven",
+    "durable-functions",
+    "client-proxy"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

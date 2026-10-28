@@ -1,0 +1,67 @@
+---
+slug: /
+sidebar_position: 1
+title: Introduction
+description: Inngest as a NestJS microservice transport.
+---
+
+# nestjs-inngest-transport
+
+**Inngest as a NestJS microservice transport.** Your `@EventPattern` handlers become durable
+[Inngest](https://www.inngest.com) functions, and a `ClientProxy` sends the events that trigger them.
+
+```ts
+@Controller()
+@UseFilters(InngestExceptionFilter)
+export class OrdersHandler {
+  @InngestEventPattern('orders.placed', { concurrency: { limit: 5 } })
+  async place(@Payload() order: Order, @Ctx() context: InngestContext) {
+    const step = context.getStep();
+    await step.run('reserve-stock', () => this.stock.reserve(order));
+    await step.sleep('cool-off', '1h');
+    await step.run('confirm', () => this.mailer.confirm(order));
+  }
+}
+```
+
+## The idea
+
+Nest's [microservices](https://docs.nestjs.com/microservices/basics) give one programming model —
+`@EventPattern`, `@Payload()`, `@Ctx()`, `ClientProxy.emit()` — over many brokers: Redis, NATS,
+RabbitMQ, Kafka. This package adds Inngest to that list as a
+[custom transport](https://docs.nestjs.com/microservices/custom-transport).
+
+From the controller's side nothing is new: guards, pipes, interceptors and exception filters apply
+as on any transport. What Inngest adds is what a queue does not have: **durable steps** that run once
+and are memoized across retries, `step.sleep` and `step.waitForEvent`, retries with backoff,
+concurrency, throttling, rate limiting, debouncing, idempotency, and a dashboard of every run.
+
+## How it maps
+
+| Nest | Inngest |
+|---|---|
+| `@EventPattern('orders.placed')` | a function triggered by the `orders.placed` event |
+| `@Payload()` | the event's `data` |
+| `@Ctx()` → `InngestContext` | the event, the step tools, the run id, the attempt |
+| `ClientProxy.emit(pattern, data)` | `inngest.send({ name: pattern, data })` |
+| a handler that throws | a failed attempt, retried by Inngest |
+| `@InngestEventPattern(pattern, config)` | the function's configuration |
+
+## Two things that are different
+
+Inngest is not a broker you poll, and two consequences shape how this transport is set up:
+
+1. **Inngest calls you.** A function is invoked over HTTP, so the strategy mounts on your
+   application's HTTP server — Express or Fastify — and the application has to be reachable by
+   Inngest. See [Express and Fastify](./guides/express-and-fastify.mdx) and
+   [Deployment](./guides/deployment.mdx).
+2. **Triggers are exact names.** Inngest has no wildcards, so a pattern is resolved into the event
+   names it stands for when the functions are created. See
+   [Patterns and triggers](./guides/patterns-and-triggers.mdx).
+
+## Where to go next
+
+- [Installation](./getting-started/installation.mdx) and the [Quick start](./getting-started/quick-start.mdx).
+- [Errors and retries](./guides/errors-and-retries.mdx) — read it before going to production: Nest's
+  default exception filter hides Inngest's control-flow errors.
+- [Testing](./guides/testing.mdx) — unit, in-process and against the dev server.

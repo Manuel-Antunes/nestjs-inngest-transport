@@ -1,0 +1,126 @@
+---
+sidebar_position: 1
+title: API
+description: Every export of nestjs-inngest-transport.
+---
+
+# API
+
+Everything below is exported from `nestjs-inngest-transport`, except `FakeInngest`, which is in
+`nestjs-inngest-transport/testing`.
+
+## `InngestStrategy`
+
+`extends Server implements CustomTransportStrategy` — the server.
+
+```ts
+new InngestStrategy(options: InngestStrategyOptions)
+```
+
+| member | |
+|---|---|
+| `static DEFAULT_SERVE_PATH` | `'/api/inngest'` |
+| `setHttpAdapter(adapter)` | sets the adapter when it was not given in the options |
+| `listen(callback)` | creates the functions and mounts them; called by `startAllMicroservices()` |
+| `close()` | forgets the functions; the host owns the port |
+| `unwrap()` | `{ inngest, platform, functions, triggers }` — the client, `'express' \| 'fastify'`, the functions and the event names, by pattern |
+| `on(event, callback)` | `'listening'`, `'error'`, `'close'` — see `InngestEventsMap` |
+| `status` | an observable of `InngestStatus`: `starting`, `connected`, `disconnected` |
+| `handleMessage(pattern, event, step, runId, attempt, events?)` | one invocation; what a function calls |
+
+`InngestStrategyOptions`: `inngest`, `httpAdapter?`, `servePath?`, `serveOrigin?`, `triggers?`,
+`retries?`, `functionConfig?`, `deserializer?`, `serializer?` — see
+[Receiving events](../guides/receiving-events.mdx#options).
+
+## `@InngestEventPattern(pattern, config?)`
+
+`@EventPattern` for this transport: binds the handler to `INNGEST_TRANSPORT` and puts `config` (an
+`InngestFunctionConfig`) in its extras. See [Receiving events](../guides/receiving-events.mdx#declaring-a-handler).
+
+## `INNGEST_TRANSPORT`
+
+The transport id, `Symbol.for('nestjs-inngest-transport.inngest')` — `strategy.transportId`, and
+what `@EventPattern(pattern, INNGEST_TRANSPORT)` binds a handler to.
+
+## `InngestClientProxy`
+
+`extends ClientProxy` — the client.
+
+```ts
+new InngestClientProxy(options: { inngest: Inngest.Any; serializer?: ProducerSerializer })
+```
+
+| member | |
+|---|---|
+| `emit(pattern, data)` | sends an event; cold observable |
+| `send(pattern, data)` | errors at once: an event gets no reply |
+| `unwrap()` | the `Inngest` client |
+| `connect()`, `close()` | do nothing |
+
+## `InngestRecordBuilder<TData>`
+
+```ts
+new InngestRecordBuilder(data)
+  .setIdempotencyKey(key)
+  .setTimestamp(ts: number | Date)
+  .setSession(key, id) / .setSessions(sessions)
+  .setUser(entries) / .setMetadata(entries)
+  .setOptions(options)
+  .build(): InngestRecord<TData>
+```
+
+| static | |
+|---|---|
+| `MAX_SESSIONS` | `5` |
+| `isRecord(value)` | whether a payload is a built record |
+| `sessionsRefusal(owner, sessions)` | the error a set of sessions earns past the limit, or `undefined` |
+
+## `InngestContext`
+
+`extends BaseRpcContext` — `@Ctx()`.
+
+`getEvent()`, `getEventName()`, `getPattern()`, `getStep()`, `getRunId()`, `getAttempt()`,
+`getEventId()`, `getEvents()` — see [Receiving events](../guides/receiving-events.mdx#what-a-handler-gets).
+
+## `InngestExceptionFilter`
+
+`@Catch() implements RpcExceptionFilter` — rethrows what it catches. See
+[Errors and retries](../guides/errors-and-retries.mdx).
+
+## `InngestTriggers`
+
+| static | |
+|---|---|
+| `MAX` | `10` — triggers per function |
+| `literal(pattern)` | the default resolver |
+| `claim(patterns, resolve)` | the names each pattern gets, one pattern per name |
+| `functionId(pattern)` | the id a function gets by default |
+
+`InngestTriggerResolver` is `(pattern: string) => string[]`.
+
+## Types
+
+| type | |
+|---|---|
+| `InngestFunctionConfig` | Inngest's function options without `triggers` and `onFailure` |
+| `InngestPatternExtras` | `{ inngest?: InngestFunctionConfig }` — the `@EventPattern` extras `@InngestEventPattern` writes |
+| `InngestRecordOptions`, `InngestRecord<T>` | what a record carries |
+| `InngestOutgoingEvent` | what a custom serializer may answer |
+| `InngestStepTools` | Inngest's step tools |
+| `InngestHttpPlatform` | `'express' \| 'fastify'` |
+| `InngestStrategyInternals` | what `strategy.unwrap()` answers |
+
+## Building blocks
+
+Exported for transports built on top of this one: `InngestFunctions` (one function per binding),
+`InngestServe` (mounting on a Nest adapter), `InngestEvent` (packet → event), `InngestListeners`.
+
+## `FakeInngest` (`/testing`)
+
+| member | |
+|---|---|
+| `sent` | every event sent, in order |
+| `created` | every function created: `{ config, handler }` |
+| `functionWithId(id)` | the created function with that id |
+| `reset()` | forgets both |
+| `asClient()` | itself, typed as an `Inngest` client |

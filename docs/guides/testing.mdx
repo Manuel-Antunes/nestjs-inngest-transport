@@ -1,0 +1,100 @@
+---
+sidebar_position: 9
+title: Testing
+description: Unit tests with FakeInngest, in-process runs with @inngest/test, and the dev server.
+---
+
+# Testing
+
+Three levels, from fastest to most realistic.
+
+## Code that sends: `FakeInngest`
+
+`nestjs-inngest-transport/testing` exports `FakeInngest`, an Inngest client that records what it was
+asked to send and which functions it was asked to create:
+
+```ts
+import { InngestClientProxy } from 'nestjs-inngest-transport';
+import { FakeInngest } from 'nestjs-inngest-transport/testing';
+
+const inngest = new FakeInngest();
+
+const testing = await Test.createTestingModule({ imports: [CheckoutModule] })
+  .overrideProvider('ORDERS_EVENTS')
+  .useValue(new InngestClientProxy({ inngest: inngest.asClient() }))
+  .compile();
+
+await testing.get(CheckoutService).checkout('o-1');
+
+expect(inngest.sent).toEqual([
+  expect.objectContaining({ name: 'orders.placed', data: { id: 'o-1' } }),
+]);
+```
+
+`inngest.reset()` forgets what was recorded; `inngest.functionWithId(id)` finds a created function.
+
+## Handlers: in process, through the real Nest pipeline
+
+Boot the application as it boots in production, then run the function the strategy created with
+Inngest's own [`@inngest/test`](https://www.inngest.com/docs/reference/testing):
+
+```bash npm2yarn
+npm install --save-dev @inngest/test
+```
+
+```ts
+import { InngestTestEngine } from '@inngest/test';
+
+const app = await NestFactory.create(AppModule, { logger: false });
+const strategy = new InngestStrategy({ inngest, httpAdapter: app.getHttpAdapter() });
+app.connectMicroservice({ strategy });
+await app.startAllMicroservices();
+await app.init();
+
+const fn = strategy.unwrap().functions.get('orders.placed');
+const { result, error } = await new InngestTestEngine({
+  function: fn,
+  events: [{ name: 'orders.placed', data: { id: 'o-1' } }],
+}).execute();
+
+expect(result).toEqual({ number: 'INV-o-1' });
+```
+
+The event goes through the guards, pipes, interceptors and filters, the steps run, and `result` is
+what Inngest would record as the run's output. `error` is what the run failed with — which is how to
+check that a `NonRetriableError` really reaches Inngest as one (see
+[Errors and retries](./errors-and-retries.mdx)). `InngestTestEngine` can also mock steps; see its
+documentation.
+
+## Everything: against the dev server
+
+The most realistic test runs the [dev server](https://www.inngest.com/docs/dev-server) and lets it
+call your application. With [Testcontainers](https://testcontainers.com):
+
+```ts
+import { GenericContainer, TestContainers, Wait } from 'testcontainers';
+
+const appPort = 3999;
+await TestContainers.exposeHostPorts(appPort);
+const devServer = await new GenericContainer('inngest/inngest')
+  .withExposedPorts(8288)
+  .withCommand(['inngest', 'dev', '--no-discovery'])
+  .withWaitStrategy(Wait.forHttp('/', 8288))
+  .start();
+const baseUrl = `http://${devServer.getHost()}:${devServer.getMappedPort(8288)}`;
+
+const inngest = new Inngest({ id: 'orders', isDev: true, baseUrl });
+// build the app with serveOrigin: `http://host.testcontainers.internal:${appPort}`
+await app.listen(appPort);
+await fetch(`http://localhost:${appPort}/api/inngest`, { method: 'PUT' }); // sync
+```
+
+Two details matter:
+
+- the container reaches the host through `host.testcontainers.internal`, which is what
+  `serveOrigin` must say — see [Deployment](./deployment.mdx#serveorigin-the-address-inngest-calls-back);
+- the dev server's REST API answers `GET /v1/events?name=…` and `GET /v1/events/:id/runs`, which is
+  how a test waits for a run to be `Completed` or `Failed`.
+
+This package's own end-to-end suite does exactly this, on Express and on Fastify — see
+`test/e2e` and `test/support/inngest-dev-server.ts` in the repository.

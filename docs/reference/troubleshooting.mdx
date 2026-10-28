@@ -1,0 +1,79 @@
+---
+sidebar_position: 2
+title: Troubleshooting
+description: Symptoms, their causes, and what to do.
+---
+
+# Troubleshooting
+
+## Runs stay in "Running" forever, and nothing is logged
+
+Inngest is calling an address that answers but is not your service — usually because the app
+registered the address it was reached at during the sync, which only exists on the other side of a
+proxy, a Docker network or a cluster. Set
+[`serveOrigin`](../guides/deployment.mdx#serveorigin-the-address-inngest-calls-back) to the origin
+Inngest can reach.
+
+## `InngestStrategy has to be started before the application listens`
+
+`startAllMicroservices()` was called after `listen()`. Swap them — see
+[Express and Fastify](../guides/express-and-fastify.mdx#start-the-microservice-before-listening).
+
+## `/api/inngest` answers 404 on Express
+
+The strategy was started after `app.init()`, so its route sits behind Nest's not-found handler.
+Call `startAllMicroservices()` before `init()` as well — which `listen()` calls for you when the
+microservices were started first.
+
+## `InngestStrategy needs a Nest HTTP adapter`
+
+Pass `httpAdapter: app.getHttpAdapter()`, or call `strategy.setHttpAdapter(...)` before
+`startAllMicroservices()`. A standalone microservice (`NestFactory.createMicroservice`) has no HTTP
+server to mount on; use a hybrid application.
+
+## `'orders.#' stands for no event name … nothing will ever trigger this handler`
+
+The pattern has a wildcard the default resolver cannot spell out, or every name it stands for was
+claimed by a more specific pattern. Give the strategy a
+[trigger resolver](../guides/patterns-and-triggers.mdx#wildcards-your-own-resolver), or bind literal
+names.
+
+## `… Inngest takes at most 10 triggers on one function`
+
+A resolver answered more than ten names for one pattern. Split it into several patterns.
+
+## `… would both create the Inngest function '…'`
+
+Two patterns derive the same function id. Give one of them an `id`:
+`@InngestEventPattern(pattern, { id })`.
+
+## A `NonRetriableError` is retried, and the run's error says "Internal server error"
+
+Nest's default exception filter replaced the error. Apply
+[`InngestExceptionFilter`](../guides/errors-and-retries.mdx#inngestexceptionfilter).
+
+## `Unable to resolve signature of method decorator when called as an expression`
+
+NestJS 12's `@EventPattern` with a typed `@Ctx()` parameter. Use `@InngestEventPattern`, or
+`@EventPattern<string>(pattern)` — see [Receiving events](../guides/receiving-events.mdx#declaring-a-handler).
+
+## `context.getPattern is not a function`
+
+A pipe applied with `@UsePipes()` also transformed the `@Ctx()` parameter. Bind the pipe to the
+payload: `@Payload(MyPipe)`.
+
+## A side effect happens several times in one run
+
+Code outside a `step.run` runs on every invocation of a function with steps. Move the side effect
+into a step — see [Steps](../guides/steps.mdx#how-it-runs).
+
+## `send()` errors with "gets no reply"
+
+Inngest events have no reply. Use `emit()`; to call a function and wait for its result from another
+function, use `step.invoke`.
+
+## Events are sent but no function runs (locally)
+
+- The dev server does not know the app: open `http://localhost:8288`, *Apps*, and sync
+  `http://<your app>/api/inngest`, or start the dev server with `-u` pointing at it.
+- The client is not in dev mode and is sending to Inngest Cloud: set `isDev: true` or `INNGEST_DEV=1`.

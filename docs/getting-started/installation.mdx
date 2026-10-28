@@ -1,0 +1,45 @@
+---
+sidebar_position: 1
+title: Installation
+description: Install the transport and its peer dependencies.
+---
+
+# Installation
+
+```bash npm2yarn
+npm install nestjs-inngest-transport inngest
+```
+
+## Requirements
+
+| | version |
+|---|---|
+| Node.js | 22.12 or newer |
+| `@nestjs/common`, `@nestjs/core`, `@nestjs/microservices` | 11.1+ or 12 |
+| `inngest` | 4 |
+| `rxjs` | 7.8+ |
+| HTTP platform | `@nestjs/platform-express` or `@nestjs/platform-fastify` |
+
+The package ships both CommonJS and ES modules, with type declarations for each, so it works in a
+classic `tsc`-compiled Nest application and in an ESM one alike.
+
+## A local Inngest
+
+Locally, Inngest is the [dev server](https://www.inngest.com/docs/dev-server) — one binary or one
+container, with a UI at `http://localhost:8288`:
+
+```bash
+npx inngest-cli@latest dev -u http://localhost:3000/api/inngest
+```
+
+or, with Docker:
+
+```bash
+docker run -p 8288:8288 inngest/inngest inngest dev -u http://host.docker.internal:3000/api/inngest
+```
+
+`-u` is where your application serves its functions; the dev server registers them from there. The
+Inngest client in your application must be in dev mode to talk to it — `isDev: true`, or
+`INNGEST_DEV=1` in the environment.
+
+Continue with the [Quick start](./quick-start.mdx).

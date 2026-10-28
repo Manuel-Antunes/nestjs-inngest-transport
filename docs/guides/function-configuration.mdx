@@ -1,0 +1,86 @@
+---
+sidebar_position: 4
+title: Function configuration
+description: Concurrency, throttling, retries, timeouts and the rest — for every function or one pattern.
+---
+
+# Function configuration
+
+Every option Inngest's `createFunction()` takes — except the triggers, which the transport decides,
+and `onFailure`, which has no Nest handler to call — can be set for every function, or for one.
+
+## For one pattern
+
+As the second argument of `@InngestEventPattern`:
+
+```ts
+@InngestEventPattern('orders.paid', {
+  id: 'charge-order',
+  retries: 2,
+  concurrency: { limit: 1, key: 'event.data.customerId' },
+  timeouts: { finish: '5m' },
+})
+charge(@Payload() order: Order) {}
+```
+
+or, with Nest's own decorator, in its extras under `inngest`:
+
+```ts
+@EventPattern<string>('orders.paid', {
+  inngest: { id: 'charge-order', retries: 2 },
+} satisfies InngestPatternExtras)
+```
+
+## For every function
+
+```ts
+new InngestStrategy({
+  inngest,
+  httpAdapter,
+  retries: 5,
+  functionConfig: { timeouts: { start: '1m' } },
+});
+```
+
+or as a function of the pattern:
+
+```ts
+functionConfig: (pattern) =>
+  pattern.startsWith('billing.') ? { concurrency: { limit: 1 } } : undefined,
+```
+
+## Precedence
+
+From weakest to strongest:
+
+1. the defaults — `id` derived from the pattern, `name: 'Handle <pattern>'`;
+2. the strategy's `retries`;
+3. the strategy's `functionConfig`;
+4. the pattern's own — `@InngestEventPattern(pattern, config)`.
+
+Each layer is merged over the one before, key by key.
+
+## What is available
+
+The full list is Inngest's
+[function configuration](https://www.inngest.com/docs/reference/functions/create). The ones you will
+reach for most:
+
+| option | for |
+|---|---|
+| `retries` | attempts after the first, `0`–`20` (default 4) |
+| `concurrency` | at most N runs at once, optionally per key (`event.data.customerId`) |
+| `throttle`, `rateLimit` | at most N runs per period — queued, or dropped |
+| `debounce` | wait for a quiet period and run once with the last event |
+| `idempotency` | at most one run per key in 24 hours |
+| `priority` | run some events ahead of others |
+| `timeouts` | cancel a run that waits too long to `start` or takes too long to `finish` |
+| `cancelOn` | cancel a run when another event arrives |
+| `batchEvents` | one run for many events — read them with `context.getEvents()` |
+
+:::note Batches
+
+With `batchEvents`, `@Payload()` is the **first** event's data and `context.getEvent()` the first
+event; every event of the batch is `context.getEvents()`.
+
+:::
