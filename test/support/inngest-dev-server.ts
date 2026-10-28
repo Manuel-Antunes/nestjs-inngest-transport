@@ -96,6 +96,7 @@ export class InngestDevServer {
   /**
    * What a run returned. The REST API leaves `output` empty, so it is read the way the dev server's
    * own UI reads it: the run's trace names its output, and the output is fetched by that id.
+   * A run reported `Completed` may not have its output stored yet: that reads as `undefined`.
    */
   async outputOf(run: DevServerRun): Promise<unknown> {
     const trace = await this.graphql<{ runTrace: { outputID: string | null } }>(
@@ -110,7 +111,7 @@ export class InngestDevServer {
       `{ runTraceSpanOutputByID(outputID: "${trace.runTrace.outputID}") { data } }`,
     );
     const data = output.runTraceSpanOutputByID.data;
-    return data === null ? undefined : JSON.parse(data);
+    return data ? JSON.parse(data) : undefined;
   }
 
   async stop(): Promise<void> {

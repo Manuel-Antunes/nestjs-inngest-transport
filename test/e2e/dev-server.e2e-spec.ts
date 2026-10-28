@@ -86,7 +86,9 @@ describe.each(['express', 'fastify'] as const)(
         return runs;
       });
 
-      expect(await devServer.outputOf(run)).toBe('receipt for charged o-2');
+      await eventually(async () =>
+        expect(await devServer.outputOf(run)).toBe('receipt for charged o-2'),
+      );
       expect(orders.deliveries.steps).toEqual(
         expect.arrayContaining(['charge', 'receipt']),
       );
