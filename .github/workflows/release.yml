@@ -66,8 +66,16 @@ jobs:
           fi
 
       # A prerelease version (1.0.0-rc.1) is published under the `next` dist-tag, never `latest`.
+      # A version already on npm (the first one, published by hand before trusted publishing could
+      # be configured) is not published again; the release is still created.
       - name: Publish to npm
         run: |
+          name="$(node -p "require('./package.json').name")"
+          version="${GITHUB_REF_NAME#v}"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm — skipping publish."
+            exit 0
+          fi
           case "$GITHUB_REF_NAME" in
             *-*) npm publish --provenance --access public --tag next ;;
             *)   npm publish --provenance --access public ;;
