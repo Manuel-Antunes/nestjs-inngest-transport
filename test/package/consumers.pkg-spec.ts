@@ -118,11 +118,11 @@ ${consumerBody}`,
 
     expect(listed).toEqual(
       expect.arrayContaining([
-        'dist/index.js',
+        'dist/index.mjs',
         'dist/index.cjs',
+        'dist/index.d.mts',
         'dist/index.d.ts',
-        'dist/index.d.cts',
-        'dist/testing.js',
+        'dist/testing.mjs',
         'dist/testing.cjs',
         'LICENSE',
         'README.md',

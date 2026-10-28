@@ -14,5 +14,6 @@ export default defineConfig({
   clean: true,
   treeshake: false,
   outDir: 'dist',
+  outExtension: ({ format }) => ({ js: format === 'esm' ? '.mjs' : '.cjs' }),
   external: [/^@nestjs\//, /^inngest(\/.*)?$/, 'rxjs', 'reflect-metadata'],
 });
