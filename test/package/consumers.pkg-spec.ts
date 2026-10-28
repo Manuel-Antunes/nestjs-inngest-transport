@@ -9,6 +9,9 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+/** `npm pack --json` answers an array up to npm 11 and an object keyed by package name from 12. */
+type Packed = { files: { path: string }[] };
+
 const root = resolve(__dirname, '../..');
 const peers = ['@nestjs', 'inngest', 'rxjs', 'reflect-metadata'];
 
@@ -113,7 +116,8 @@ ${consumerBody}`,
       ['pack', '--dry-run', '--json', '--ignore-scripts'],
       { cwd: root, encoding: 'utf8' },
     );
-    const [packed] = JSON.parse(files) as { files: { path: string }[] }[];
+    const report = JSON.parse(files) as Packed[] | Record<string, Packed>;
+    const [packed] = Array.isArray(report) ? report : Object.values(report);
     const listed = packed.files.map(({ path }) => path);
 
     expect(listed).toEqual(
