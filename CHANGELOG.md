@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-28
+
+### Fixed
+
+- The package check reads `npm pack --json` as npm 12 writes it — an object keyed by package
+  name — as well as the array npm 11 wrote, so the release workflow, which runs the latest npm,
+  checks the tarball again.
+
 ## [0.1.0] - 2026-10-28
 
 First public release.
@@ -29,5 +37,6 @@ First public release.
 - `nestjs-inngest-transport/testing`: `FakeInngest`.
 - Refuses to start once the application is listening, where the functions would be unreachable.
 
-[Unreleased]: https://github.com/Manuel-Antunes/nestjs-inngest-transport/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Manuel-Antunes/nestjs-inngest-transport/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Manuel-Antunes/nestjs-inngest-transport/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Manuel-Antunes/nestjs-inngest-transport/releases/tag/v0.1.0

@@ -1,6 +1,6 @@
 {
   "name": "nestjs-inngest-transport",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Inngest as a NestJS microservice transport: @EventPattern handlers become Inngest functions, and a ClientProxy sends events.",
   "author": "Manuel Antunes",
   "license": "MIT",
