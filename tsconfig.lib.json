@@ -1,8 +1,6 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
     "rootDir": "src",
     "outDir": "out-tsc/lib",
     "composite": true,
